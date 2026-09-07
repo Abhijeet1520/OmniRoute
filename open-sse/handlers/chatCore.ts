@@ -111,7 +111,7 @@ import {
 import { recoverAnthropicThinkingSignature } from "./chatCore/thinkingSignatureRecovery.ts";
 import { runProviderExecutionPipeline } from "./chatCore/providerExecutionPipeline.ts";
 import { runNonStreamingProviderLeg } from "./chatCore/nonStreamingProviderLeg.ts";
-import type { ChatCoreErrorResult } from "@/lib/skills/toolLoopTypes.ts";
+import type { NonStreamingProviderLegResult } from "@/lib/skills/toolLoopTypes.ts";
 import {
   applyServerOwnedToolLoopIfNeeded,
   derivePostInjectionRequestIdentity,
@@ -5040,34 +5040,43 @@ export async function handleChatCore({
           trackPendingRequest,
         });
       }
+      // `legResult` is declared as the full NonStreamingProviderLegResult union. The
+      // `kind === "error"` guard above narrows it to the ok variant, but the conditional
+      // reassignment below widens it back to the declared type, so every field read past
+      // this point lost the narrowing — 13 TS2339 diagnostics under
+      // tsconfig.typecheck-api.json, which pulls chatCore.ts in through the route while
+      // tsconfig.typecheck-core.json does not. Pin the ok variant in its own binding:
+      // `loopApply.leg` is already `NonStreamingProviderLegResult & { kind: "ok" }`,
+      // so no cast is involved.
+      let okLeg: NonStreamingProviderLegResult & { kind: "ok" } = legResult;
       if (loopApply.kind === "ok") {
         toolLoopRan = true;
         toolLoopUsage = loopApply.usage;
-        legResult = loopApply.leg;
+        okLeg = loopApply.leg;
       }
 
-      if (legResult.upstreamResponse) {
-        providerResponse = legResult.upstreamResponse;
-        providerHeaders = normalizeHeaders(legResult.upstreamResponse.headers);
+      if (okLeg.upstreamResponse) {
+        providerResponse = okLeg.upstreamResponse;
+        providerHeaders = normalizeHeaders(okLeg.upstreamResponse.headers);
       } else {
         providerResponse = new Response(null, {
           status: 200,
-          headers: legResult.headers,
+          headers: okLeg.headers,
         });
-        providerHeaders = normalizeHeaders(legResult.headers);
+        providerHeaders = normalizeHeaders(okLeg.headers);
       }
-      finalBody = providerRequestCapture.body(legResult.providerRequest || translatedBody);
+      finalBody = providerRequestCapture.body(okLeg.providerRequest || translatedBody);
       const capturedOk = providerRequestCapture.latest?.();
       reqLogger.logTargetRequest(
-        legResult.requestUrl || capturedOk?.url || "",
-        legResult.requestHeaders || capturedOk?.headers || {},
+        okLeg.requestUrl || capturedOk?.url || "",
+        okLeg.requestHeaders || capturedOk?.headers || {},
         capturedOk?.body ?? finalBody
       );
-      const responseBody = legResult.providerBody;
-      const responsePayloadFormat = legResult.responsePayloadFormat;
-      const looksLikeSSE = legResult.looksLikeSSE;
-      let translatedResponse = legResult.response;
-      const memoryExtractionResponse = legResult.responseForMemoryExtraction;
+      const responseBody = okLeg.providerBody;
+      const responsePayloadFormat = okLeg.responsePayloadFormat;
+      const looksLikeSSE = okLeg.looksLikeSSE;
+      let translatedResponse = okLeg.response;
+      const memoryExtractionResponse = okLeg.responseForMemoryExtraction;
       reqLogger.logProviderResponse(
         200,
         "OK",
