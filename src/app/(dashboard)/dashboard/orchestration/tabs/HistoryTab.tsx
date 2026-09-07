@@ -339,6 +339,47 @@ function HistoryGridTable({
   );
 }
 
+/** Loading indicator + "no rows" empty state. Mutually exclusive by construction (the empty
+ * message only ever renders once loading has finished), same as the two conditionals this
+ * replaces. Extracted only to keep `HistoryTab` under the max-lines-per-function ratchet. */
+function HistoryStatusRows({
+  isLoading,
+  hasNoRows,
+  t,
+  tCommon,
+}: {
+  isLoading: boolean;
+  hasNoRows: boolean;
+  t: ReturnType<typeof useTranslations>;
+  tCommon: ReturnType<typeof useTranslations>;
+}) {
+  return (
+    <>
+      {isLoading && (
+        <div role="status" aria-live="polite" className="text-xs text-muted">
+          {tCommon("loading")}
+        </div>
+      )}
+      {hasNoRows && !isLoading && <div className="text-xs text-muted p-4">{t("historyEmpty")}</div>}
+    </>
+  );
+}
+
+/** Re-samples `nowMs` from inside a real event-driven callback (never during render — the
+ * `nowMs` note on `HistoryTab` explains why) so the drawer's `onActionDone` refetches the grid
+ * over a new range without closing the drawer: the drawer renders its own success toast right
+ * after calling `onActionDone`, so unmounting here would throw the confirmation away and the
+ * operator would see a repeat/cancel silently do nothing. The updater only ever picks the larger
+ * of the sampled clock and `prev + 1`, so the range always changes (and the refetch always
+ * happens) even when two samples land in the same millisecond. Extracted only to keep
+ * `HistoryTab` under the max-lines-per-function ratchet — no behavior change. */
+function refreshNowMsOnActionDone(setNowMs: (updater: (prev: number) => number) => void) {
+  return () => {
+    const sampled = Date.now();
+    setNowMs((prev) => (sampled > prev ? sampled : prev + 1));
+  };
+}
+
 export function HistoryTab() {
   const t = useTranslations("orchestration");
   // `common.loading` is an already-translated global key — the history namespace has no
@@ -408,15 +449,12 @@ export function HistoryTab() {
 
       <FailedSourcesList failedSources={failedSources} t={t} />
 
-      {isLoading && (
-        <div role="status" aria-live="polite" className="text-xs text-muted">
-          {tCommon("loading")}
-        </div>
-      )}
-
-      {grid.rows.length === 0 && !isLoading && (
-        <div className="text-xs text-muted p-4">{t("historyEmpty")}</div>
-      )}
+      <HistoryStatusRows
+        isLoading={isLoading}
+        hasNoRows={grid.rows.length === 0}
+        t={t}
+        tCommon={tCommon}
+      />
 
       {grid.rows.length > 0 && (
         <HistoryGridTable
@@ -441,22 +479,10 @@ export function HistoryTab() {
         />
       )}
 
-      {/* `onActionDone` must NOT close the drawer: the drawer renders its own success toast
-          right after calling it, so unmounting here threw the confirmation away and the
-          operator saw a repeat/cancel silently do nothing. Re-sampling `nowMs` instead
-          keeps the drawer mounted (the toast lands) and refreshes the grid through the new
-          range — the same "refetch, don't close" contract `OrchestrationPageClient` uses.
-          `Date.now()` is sampled inside a real event-driven callback, never during render
-          (see the `nowMs` note above), and the updater is pure — it only picks the larger of
-          the sampled clock and `prev + 1`, so the range always changes (and the refetch
-          always happens) even when two samples land in the same millisecond. */}
       <OrchestrationDrawer
         node={selected}
         onClose={() => setSelected(null)}
-        onActionDone={() => {
-          const sampled = Date.now();
-          setNowMs((prev) => (sampled > prev ? sampled : prev + 1));
-        }}
+        onActionDone={refreshNowMsOnActionDone(setNowMs)}
       />
     </div>
   );

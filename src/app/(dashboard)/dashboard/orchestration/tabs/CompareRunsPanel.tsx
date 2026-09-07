@@ -338,6 +338,99 @@ function SideErrorCell({
   );
 }
 
+/** Title bar (panel label + close button). Split out only to keep `CompareRunsPanel` under the
+ * max-lines-per-function ratchet — no behavior change. */
+function ComparePanelHeaderBar({ t, onClose }: { t: Translate; onClose: () => void }) {
+  return (
+    <div className="flex items-center justify-between mb-2 min-w-[480px]">
+      <span className="text-xs font-semibold">{t("compareTitle")}</span>
+      <button
+        type="button"
+        data-testid="orchestration-compare-close"
+        aria-label={t("drawerClose")}
+        className="text-muted"
+        onClick={onClose}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+/** Per-side fetch-failure row — renders only when at least one side's fetch failed (`SideErrorCell`
+ * itself still renders an empty, role-less cell for a side that succeeded, so the two columns stay
+ * grid-aligned). Split out only to keep `CompareRunsPanel` under the max-lines-per-function
+ * ratchet — no behavior change. */
+function SideErrorRow({
+  leftError,
+  rightError,
+  t,
+}: {
+  leftError: string | null;
+  rightError: string | null;
+  t: Translate;
+}) {
+  if (!leftError && !rightError) return null;
+  return (
+    <div className="grid grid-cols-2 gap-2 min-w-[480px] mb-2">
+      <SideErrorCell error={leftError} t={t} testId="orchestration-compare-error-left" />
+      <SideErrorCell error={rightError} t={t} testId="orchestration-compare-error-right" />
+    </div>
+  );
+}
+
+/** Delta-column legend (Task A4 review fix, Minor #4) plus the Duration/Cost/Events metric rows
+ * — column order is selection order, not chronology, so nothing else on the panel says which side
+ * a positive delta favors. Split out only to keep `CompareRunsPanel` under the
+ * max-lines-per-function ratchet — no behavior change. */
+function ComparisonMetrics({
+  t,
+  left,
+  right,
+  comparison,
+  eventsBothOk,
+}: {
+  t: Translate;
+  left: HistoryItem;
+  right: HistoryItem;
+  comparison: RunComparison;
+  eventsBothOk: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-[70px_1fr_1fr_70px] gap-2 text-[9px] items-center min-w-[480px] text-muted">
+        <span />
+        <span />
+        <span />
+        <span data-testid="orchestration-compare-delta-legend" className="text-right">
+          {t("compareDeltaLegend")}
+        </span>
+      </div>
+      <MetricRow
+        metricKey="duration"
+        label={t("compareDuration")}
+        leftText={formatDuration(left.durationMs)}
+        rightText={formatDuration(right.durationMs)}
+        deltaText={formatDurationDelta(comparison.deltas.durationMs)}
+      />
+      <MetricRow
+        metricKey="cost"
+        label={t("compareCost")}
+        leftText={formatCost(left.cost)}
+        rightText={formatCost(right.cost)}
+        deltaText={formatCostDelta(comparison.deltas.cost)}
+      />
+      <MetricRow
+        metricKey="events"
+        label={t("compareEvents")}
+        leftText={eventsBothOk ? String(comparison.left.events.length) : "—"}
+        rightText={eventsBothOk ? String(comparison.right.events.length) : "—"}
+        deltaText={eventsBothOk ? formatEventDelta(comparison.deltas.eventCount) : "—"}
+      />
+    </div>
+  );
+}
+
 export function CompareRunsPanel({
   left,
   right,
@@ -366,34 +459,14 @@ export function CompareRunsPanel({
       data-testid="orchestration-history-compare-panel"
       className="border border-border rounded p-2 overflow-x-auto overflow-y-auto max-h-[45vh] shrink-0"
     >
-      <div className="flex items-center justify-between mb-2 min-w-[480px]">
-        <span className="text-xs font-semibold">{t("compareTitle")}</span>
-        <button
-          type="button"
-          data-testid="orchestration-compare-close"
-          aria-label={t("drawerClose")}
-          className="text-muted"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-      </div>
+      <ComparePanelHeaderBar t={t} onClose={onClose} />
 
       <div className="grid grid-cols-2 gap-2 min-w-[480px] mb-2">
         <RunHeader item={left} t={t} testId="orchestration-compare-header-left" />
         <RunHeader item={right} t={t} testId="orchestration-compare-header-right" />
       </div>
 
-      {(leftState.error || rightState.error) && (
-        <div className="grid grid-cols-2 gap-2 min-w-[480px] mb-2">
-          <SideErrorCell error={leftState.error} t={t} testId="orchestration-compare-error-left" />
-          <SideErrorCell
-            error={rightState.error}
-            t={t}
-            testId="orchestration-compare-error-right"
-          />
-        </div>
-      )}
+      <SideErrorRow leftError={leftState.error} rightError={rightState.error} t={t} />
 
       {/* Informational only — fires on every mount where the two picks are not the same
           (source, identity) pair, never in response to an error condition, so `role="status"`
@@ -405,40 +478,13 @@ export function CompareRunsPanel({
         </div>
       )}
 
-      <div className="flex flex-col gap-1">
-        {/* Delta-column legend (Task A4 review fix, Minor #4): column order is selection order,
-            not chronology, so nothing else on the panel says which side a positive delta favors.
-            Shares the metric rows' grid template and right-aligns like the delta cells below. */}
-        <div className="grid grid-cols-[70px_1fr_1fr_70px] gap-2 text-[9px] items-center min-w-[480px] text-muted">
-          <span />
-          <span />
-          <span />
-          <span data-testid="orchestration-compare-delta-legend" className="text-right">
-            {t("compareDeltaLegend")}
-          </span>
-        </div>
-        <MetricRow
-          metricKey="duration"
-          label={t("compareDuration")}
-          leftText={formatDuration(left.durationMs)}
-          rightText={formatDuration(right.durationMs)}
-          deltaText={formatDurationDelta(comparison.deltas.durationMs)}
-        />
-        <MetricRow
-          metricKey="cost"
-          label={t("compareCost")}
-          leftText={formatCost(left.cost)}
-          rightText={formatCost(right.cost)}
-          deltaText={formatCostDelta(comparison.deltas.cost)}
-        />
-        <MetricRow
-          metricKey="events"
-          label={t("compareEvents")}
-          leftText={eventsBothOk ? String(comparison.left.events.length) : "—"}
-          rightText={eventsBothOk ? String(comparison.right.events.length) : "—"}
-          deltaText={eventsBothOk ? formatEventDelta(comparison.deltas.eventCount) : "—"}
-        />
-      </div>
+      <ComparisonMetrics
+        t={t}
+        left={left}
+        right={right}
+        comparison={comparison}
+        eventsBothOk={eventsBothOk}
+      />
 
       <TimelineRows comparison={comparison} t={t} />
       <MemorySection comparison={comparison} t={t} />

@@ -56,21 +56,30 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+/** One `reconstituteHistoricalTask` event (`{ timestamp: string; state: string; message?: string
+ * }`) → `RunEvent`, or `null` if the raw shape does not match. Split out of `a2aEventsFrom` only
+ * to keep that function's cognitive complexity under the ratchet — no behavior change; the same
+ * field checks run in the same order. */
+function a2aEventFrom(raw: unknown): RunEvent | null {
+  if (!isRecord(raw)) return null;
+  const { state, message, timestamp } = raw;
+  if (!isNonEmptyString(state)) return null;
+  if (message !== undefined && typeof message !== "string") return null;
+  if (timestamp !== undefined && timestamp !== null && typeof timestamp !== "string") return null;
+  return {
+    label: typeof message === "string" ? message : state,
+    timestamp: typeof timestamp === "string" ? timestamp : null,
+  };
+}
+
 /** `{ timestamp: string; state: string; message?: string }` — reconstituteHistoricalTask's shape. */
 function a2aEventsFrom(detail: Record<string, unknown>): RunEvent[] {
   const events = detail.events;
   if (!Array.isArray(events)) return [];
   const out: RunEvent[] = [];
   for (const raw of events) {
-    if (!isRecord(raw)) continue;
-    const { state, message, timestamp } = raw;
-    if (!isNonEmptyString(state)) continue;
-    if (message !== undefined && typeof message !== "string") continue;
-    if (timestamp !== undefined && timestamp !== null && typeof timestamp !== "string") continue;
-    out.push({
-      label: typeof message === "string" ? message : state,
-      timestamp: typeof timestamp === "string" ? timestamp : null,
-    });
+    const event = a2aEventFrom(raw);
+    if (event) out.push(event);
   }
   return out;
 }
