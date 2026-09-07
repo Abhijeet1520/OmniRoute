@@ -30,6 +30,12 @@ function runGate(
 ) {
   const env: Record<string, string> = {
     ...process.env,
+    // The gate reads its opt-in from git config, so the ambient global/system
+    // config has to be neutralised: on a machine that HAS opted in (the
+    // maintainer's own boxes) the "not opted in" case is otherwise impossible
+    // to simulate and the test fails there while passing on a clean CI runner.
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_SYSTEM: "/dev/null",
     GIT_AUTHOR_NAME: identity.authorName,
     GIT_AUTHOR_EMAIL: identity.authorEmail,
     GIT_COMMITTER_NAME: identity.committerName,
