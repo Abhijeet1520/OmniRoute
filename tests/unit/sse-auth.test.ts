@@ -1555,7 +1555,7 @@ test("markAccountUnavailable uses a connection-wide cooldown for non-local 404 e
   const result = await auth.markAccountUnavailable(
     connection.id,
     404,
-    "model not found",
+    "404 page not found",
     "openai",
     "gpt-missing"
   );
@@ -1576,7 +1576,7 @@ test("markAccountUnavailable auto-disables permanently banned accounts when the 
   const result = await auth.markAccountUnavailable(
     connection.id,
     401,
-    "Verify your account to continue",
+    "Your account has been suspended", // #14848: "Verify your account…" is no longer a ban
     "openai",
     "gpt-4o"
   );
@@ -1600,7 +1600,7 @@ test("markAccountUnavailable keeps prepaid API keys active when auto-disable sco
   const result = await auth.markAccountUnavailable(
     connection.id,
     401,
-    "Verify your account to continue",
+    "Your account has been suspended",
     "openai",
     "gpt-4o"
   );
@@ -1626,7 +1626,7 @@ test("markAccountUnavailable still auto-disables OAuth accounts when scope is su
   const result = await auth.markAccountUnavailable(
     connection.id,
     401,
-    "Verify your account to continue",
+    "Your account has been suspended",
     "claude",
     "claude-sonnet"
   );
@@ -1646,7 +1646,7 @@ test("markAccountUnavailable leaves permanently banned accounts active when auto
   const result = await auth.markAccountUnavailable(
     connection.id,
     401,
-    "Verify your account to continue",
+    "Your account has been suspended",
     "openai",
     "gpt-4o"
   );
@@ -1690,7 +1690,7 @@ test("markAccountUnavailable swallows auto-disable persistence errors", async ()
     const result = await auth.markAccountUnavailable(
       connection.id,
       401,
-      "Verify your account to continue",
+      "Your account has been suspended",
       "openai",
       "gpt-4o"
     );
