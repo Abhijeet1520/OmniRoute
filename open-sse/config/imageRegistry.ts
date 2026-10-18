@@ -5,7 +5,6 @@
  * Each provider has its own request format and endpoint.
  */
 
-import { isFeatureFlagEnabled } from "@/shared/utils/featureFlags.ts";
 import { hasUnsafeModelIdSyntax } from "../utils/modelIdSafety.ts";
 import { LMARENA_DIRECT_IMAGE_MODELS } from "./providers/registry/lmarena/directModels.ts";
 import { SEGMIND_IMAGE_PROVIDER } from "./providers/registry/segmind/imageModels.ts";
@@ -104,17 +103,42 @@ const XAI_SUBSCRIPTION_IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
   "grok-cli": { ...XAI_IMAGE_CONFIG, id: "grok-cli", alias: "gc", authType: "oauth" },
 };
 
+/**
+ * Server-only seam for the DB-backed feature flag (#15423 regression of #10692).
+ *
+ * `IMAGE_PROVIDERS` is reachable from `"use client"` dashboard pages through
+ * `mediaServiceKinds` (see the invariant in src/lib/providers/serviceKindIndex.ts),
+ * so this registry must NOT statically import `@/shared/utils/featureFlags` —
+ * that edge drags `db/featureFlags → db/core` (and the whole server-only graph)
+ * into the browser bundle and fails the production build with ~175
+ * `Module not found: 'fs' / 'async_hooks' / 'child_process'` errors.
+ * A dynamic `import()` does not help: the bundler still traces the edge.
+ *
+ * Same dependency inversion as `dynamicImageModelSources` (#10692): the server
+ * registers the real (DB+env) resolver at startup; nothing registered — the
+ * browser bundle — falls back to the env var alone, which is correct for the
+ * client (the DB override is a server-side operator concern).
+ */
+let _grokSubscriptionImagesResolver: (() => boolean) | null = null;
+
+/** Called by server startup code to install the DB-backed flag resolver. */
+export function registerGrokSubscriptionImagesResolver(resolver: () => boolean): void {
+  _grokSubscriptionImagesResolver = resolver;
+}
+
 export function isGrokSubscriptionImagesEnabled(): boolean {
-  try {
-    return isFeatureFlagEnabled("GROK_SUBSCRIPTION_IMAGES_ENABLED");
-  } catch (error) {
-    console.error(
-      "[imageRegistry] Failed to resolve GROK_SUBSCRIPTION_IMAGES_ENABLED, defaulting to disabled:",
-      error instanceof Error ? error.message : error
-    );
-    const envValue = process.env.GROK_SUBSCRIPTION_IMAGES_ENABLED;
-    return envValue === "true" || envValue === "1" || envValue === "yes";
+  if (_grokSubscriptionImagesResolver) {
+    try {
+      return _grokSubscriptionImagesResolver();
+    } catch (error) {
+      console.error(
+        "[imageRegistry] Failed to resolve GROK_SUBSCRIPTION_IMAGES_ENABLED, defaulting to disabled:",
+        error instanceof Error ? error.message : error
+      );
+    }
   }
+  const envValue = process.env.GROK_SUBSCRIPTION_IMAGES_ENABLED;
+  return envValue === "true" || envValue === "1" || envValue === "yes";
 }
 
 function visibleImageProviders(): Record<string, ImageProviderConfig> {

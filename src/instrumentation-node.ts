@@ -359,6 +359,18 @@ export async function registerNodejs(): Promise<void> {
     await import("@/lib/proxySubscription/proxyTransitionSubscriber");
   registerSelectorTransitionSubscriber();
 
+  // Wire the DB-backed feature-flag reader into the client-safe imageRegistry
+  // seam at server boot, so every server chunk (chat, models, images) sees
+  // the GROK_SUBSCRIPTION_IMAGES_ENABLED DB override without the registry
+  // importing the DB chain (see open-sse/config/imageRegistry.ts).
+  const { registerGrokSubscriptionImagesResolver } = await import(
+    "@omniroute/open-sse/config/imageRegistry.ts"
+  );
+  const { isFeatureFlagEnabled } = await import("@/shared/utils/featureFlags.ts");
+  registerGrokSubscriptionImagesResolver(() =>
+    isFeatureFlagEnabled("GROK_SUBSCRIPTION_IMAGES_ENABLED")
+  );
+
   // Register quota fetchers early so combo routing can use real quota-aware
   // scoring for generic providers in the App Router production runtime.
   await registerQuotaFetchers();
